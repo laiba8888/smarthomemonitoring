@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Home Monitoring</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div class="container mt-3">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Brightness</th>
+        <th>Distance</th>
+        <th>Humidity</th>
+        <th>Temperature</th>
+        <th>Result Time</th>
+      </tr>
+    </thead>
+    <tbody id="tbody1"></tbody>
+  </table>
+
+  <div class="mt-5">
+    <h4>Temperature Trends</h4>
+    <canvas id="temperatureChart" width="400" height="200"></canvas>
+  </div>
+
+  <div class="mt-5">
+    <h4>Alerts</h4>
+    <ul id="alerts"></ul>
+  </div>
+</div>
+
+<script type="module">
+  // Import Firebase modules
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js";
+
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyCu0qn69bSCXl279FNUMnuPS2hw1A-4FdY",
+    authDomain: "realtime-home-monitoring.firebaseapp.com",
+    databaseURL: "https://realtime-home-monitoring-default-rtdb.firebaseio.com",
+    projectId: "realtime-home-monitoring",
+    storageBucket: "realtime-home-monitoring.appspot.com",
+    messagingSenderId: "469045710565",
+    appId: "1:469045710565:web:d91944814dfaa2cf54ce0c",
+    measurementId: "G-YNHH3MFBDS"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  let id = 0;
+  const tbody = document.getElementById('tbody1');
+  const alertList = document.getElementById("alerts");
+
+  // Function to add an item to the table
+  function AddItemToTable(bright, dis, hum, temp, result) {
+    const trow = document.createElement("tr");
+    trow.innerHTML = `
+      <td>${++id}</td>
+      <td>${bright}</td>
+      <td>${dis}</td>
+      <td>${hum}</td>
+      <td>${temp}</td>
+      <td>${result}</td>
+    `;
+    tbody.appendChild(trow);
+  }
+
+  // Function to create alerts
+  function AddAlert(message) {
+    const li = document.createElement("li");
+    li.textContent = message;
+    alertList.appendChild(li);
+
+    // Send browser notification
+    sendBrowserNotification(message);
+  }
+
+  // Function to send browser notifications
+  function sendBrowserNotification(message) {
+    console.log("Preparing to send notification:", message);
+    if (Notification.permission === "granted") {
+      new Notification("Smart Home Monitoring Alert", {
+        body: message,
+        icon: "https://via.placeholder.com/100" // Replace with your custom icon URL
+      });
+      console.log("Notification sent:", message);
+    } else {
+      console.log("Notification permission not granted");
+    }
+  }
+
+  // Request Notification Permission on Page Load
+  if (Notification.permission !== "granted") {
+    Notification.requestPermission().then(permission => {
+      if (permission === "granted") {
+        console.log("Notification permission granted");
+      } else {
+        console.log("Notification permission denied");
+      }
+    });
+  }
+
+  // Chart.js configuration
+  const ctx = document.getElementById("temperatureChart").getContext("2d");
+  const temperatureChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [], // Time labels
+      datasets: [{
+        label: "Temperature (°C)",
+        data: [], // Temperature data
+        borderColor: "rgba(75, 192, 192, 1)",
+        borderWidth: 2,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { title: { display: true, text: "Time" } },
+        y: { title: { display: true, text: "Temperature (°C)" } }
+      }
+    }
+  });
+
+  // Function to update the chart dynamically
+  function updateChart(time, temperature) {
+    temperatureChart.data.labels.push(time);
+    temperatureChart.data.datasets[0].data.push(temperature);
+    temperatureChart.update();
+  }
+
+  // Real-time listener for Firebase data
+  onValue(ref(db, "iot_data_stream"), (snapshot) => {
+    if (snapshot.exists()) {
+      tbody.innerHTML = ""; // Clear table
+      alertList.innerHTML = ""; // Clear previous alerts
+      id = 0; // Reset ID
+
+      const alertThreshold = 35; // Example threshold for temperature
+
+      snapshot.forEach(childSnapshot => {
+        const data = childSnapshot.val();
+
+        // Add data to table
+        AddItemToTable(data.bright, data.dist, data.humid, data.temp, data.result_time);
+
+        // Add data to chart
+        if (data.result_time && data.temp !== undefined) {
+          updateChart(data.result_time, data.temp);
+        }
+
+        // Check for alerts
+        if (data.temp > alertThreshold) {
+          const alertMessage = `High temperature detected: ${data.temp}°C at ${data.result_time}`;
+          AddAlert(alertMessage);
+        }
+      });
+    } else {
+      console.log("No data available");
+    }
+  });
+</script>
+</body>
+</html>
